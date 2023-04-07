@@ -6,9 +6,9 @@
 
     Notes:
         Try to run the server first with the command:
-            python3 receiver_template.py 9000 10000 FileReceived.txt 1 1
+            python3 receiver.py 9000 10000 FileReceived.txt 0 0
         Then run the sender:
-            python3 sender_template.py 11000 9000 FileToReceived.txt 1000 1
+            python3 sender.py 10000 9000 random1.txt 0 0
 
     Author: Rui Li (Tutor for COMP3331/9331)
 """
@@ -43,6 +43,8 @@ class Receiver:
         logging.debug(f"The sender is using the address {self.server_address} to receive message!")
         self.receiver_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.receiver_socket.bind(self.server_address)
+
+        self.filename = filename
         pass
 
     def run(self) -> None:
@@ -53,6 +55,10 @@ class Receiver:
             # try to receive any incoming message from the sender
             incoming_message, sender_address = self.receiver_socket.recvfrom(BUFFERSIZE)
             logging.debug(f"client{sender_address} send a message: {incoming_message.decode('utf-8')}")
+
+            with open(self.filename, 'w') as file:
+                # Write the string to the file
+                file.write(incoming_message.decode('utf-8'))
 
             # reply "ACK" once receive any message from sender
             reply_message = "ACK"

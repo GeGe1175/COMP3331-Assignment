@@ -6,9 +6,9 @@
 
     Notes:
         Try to run the server first with the command:
-            python3 receiver_template.py 9000 10000 FileReceived.txt 1 1
+            python3 receiver.py 9000 10000 FileReceived.txt 0 0
         Then run the sender:
-            python3 sender_template.py 11000 9000 FileToReceived.txt 1000 1
+            python3 sender.py 10000 9000 random1.txt 0 0
 
     Author: Rui Li (Tutor for COMP3331/9331)
 """
@@ -44,10 +44,14 @@ class Sender:
         #  (Optional) start the listening sub-thread first
         self._is_active = True  # for the multi-threading
         listen_thread = Thread(target=self.listen)
+        # starts the listening thread
         listen_thread.start()
 
         # todo add codes here
-        pass
+        self.filename = filename
+        self.max_win = int(max_win)
+        self.rot = int(rot)
+        print(filename)
 
     def ptp_open(self):
         # todo add/modify codes here
@@ -57,7 +61,6 @@ class Sender:
         pass
 
     def ptp_send(self):
-        # todo add codes here
         pass
 
     def ptp_close(self):
