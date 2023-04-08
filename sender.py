@@ -20,9 +20,9 @@ from threading import Thread  # (Optional)threading will make the timer easily i
 
 BUFFERSIZE = 1024
 
-
+# max_win is the maximum window size in byte for the sender window. Greater or equal to 1000 and a multiple of 1000.
 class Sender:
-    def __init__(self, sender_port: int, receiver_port: int, filename: str, max_win: int, rot: int) -> None:
+    def __init__(self, sender_port: int, receiver_port: int, filename: str, max_win : int, rot: int) -> None:
         '''
         The Sender will be able to connect the Receiver via UDP
         :param sender_port: the UDP port number to be used by the sender to send PTP segments to the receiver
@@ -60,8 +60,18 @@ class Sender:
         self.sender_socket.sendto(message.encode("utf-8"), self.receiver_address)
         pass
 
+    def read_file(self):
+        with open(self.filename, mode='r') as file:
+            while True:
+                content = file.read(1000)
+                if content:
+                    print("new line: ", content)
+                    print(type(content))
+                else:
+                    break
+
     def ptp_send(self):
-        pass
+        self.read_file()
 
     def ptp_close(self):
         # todo add codes here
