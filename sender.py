@@ -60,7 +60,6 @@ class Sender:
     def ptp_open(self):
         # create inital sequence number
         header_type = HeaderType.SYN.value
-        print(header_type)
         headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
         self.sender_socket.sendto(headers, self.receiver_address)
 

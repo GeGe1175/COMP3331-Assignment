@@ -47,7 +47,7 @@ class Receiver:
         self.receiver_socket.bind(self.server_address)
 
         self.filename = filename
-        self.seqno = random.randint(0, 2**16-1)
+        self.seqno = -1
         pass
 
     def run(self) -> None:
@@ -74,6 +74,7 @@ class Receiver:
 
                 # check the type of header
                 if header_type == HeaderType.SYN.value:
+                    self.seqno = seqno
                     reply_message = "ACK" # need to give an id
                     self.receiver_socket.sendto(reply_message.encode("utf-8"), sender_address)
                     continue
