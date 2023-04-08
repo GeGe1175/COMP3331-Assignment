@@ -17,6 +17,9 @@ import datetime, time  # to calculate the time delta of packet transmission
 import logging, sys  # to write the log
 import socket  # Core lib, to send packet via UDP socket
 from threading import Thread  # (Optional)threading will make the timer easily implemented
+import random
+
+from type_enums import HeaderType
 
 BUFFERSIZE = 1024
 
@@ -43,33 +46,23 @@ class Sender:
 
         # start the listening sub-thread first
         self._is_active = True  # for the multi-threading
-        listen_thread = Thread(target=self.listen)
+        self.listen_thread = Thread(target=self.listen)
         # starts the listening thread
-        listen_thread.start()
+        self.listen_thread.start()
 
         # todo add codes here
         self.filename = filename
         self.max_win = int(max_win)
         self.rot = int(rot)
+        self.seqno = random.randint(0, 2**16-1)
 
+    # setup the connection between the sender and receiver
     def ptp_open(self):
-        # todo add/modify codes here
-        # send a greeting message to receiver
-        message = "Greetings! COMP3331."
-        self.sender_socket.sendto(message.encode("utf-8"), self.receiver_address)
-        pass
-
-    def read_file(self):
-        with open(self.filename, mode='r') as file:
-            i = 0
-            while True:
-                content = file.read(1000)
-                if content:
-                    self.sender_socket.sendto(content.encode('utf-8'), self.receiver_address)
-                else:
-                    logging.debug(f'All {i} packets have been sent')
-                    break
-                i += 1
+        # create inital sequence number
+        header_type = HeaderType.SYN.value
+        print(header_type)
+        headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
+        self.sender_socket.sendto(headers, self.receiver_address)
 
     def ptp_send(self):
         self.read_file()
@@ -78,7 +71,24 @@ class Sender:
         # todo add codes here
         time.sleep(3)
         self._is_active = False  # close the sub-thread
-       # self.sender_socket.close()
+        # self.listen_thread.stop()
+
+    def read_file(self):
+        with open(self.filename, mode='r') as file:
+            i = 0
+            while True:
+                content = file.read(1000).encode('utf-8')
+                if content:
+                    header_type = HeaderType.DATA.value
+                    seqno = 10000
+                    headers = header_type.to_bytes(2, 'big') + seqno.to_bytes(2, 'big')
+                    packet = headers + content
+                    self.sender_socket.sendto(packet, self.receiver_address)
+                    i += 1
+                    logging.debug(f"Packet {i}: {len(packet)} bytes")
+                else:
+                    logging.debug(f'All {i} packets have been sent')
+                    break
 
     def listen(self):
         '''(Multithread is used)listen the response from receiver'''
@@ -96,7 +106,6 @@ class Sender:
         self.ptp_open()
         self.ptp_send()
         self.ptp_close()
-
 
 if __name__ == '__main__':
     # logging is useful for the log part: https://docs.python.org/3/library/logging.html

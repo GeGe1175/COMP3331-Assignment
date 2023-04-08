@@ -19,6 +19,8 @@ import socket  # Core lib, to send packet via UDP socket
 from threading import Thread  # (Optional)threading will make the timer easily implemented
 import random  # for flp and rlp function
 
+from type_enums import HeaderType
+
 BUFFERSIZE = 1024
 
 
@@ -45,6 +47,7 @@ class Receiver:
         self.receiver_socket.bind(self.server_address)
 
         self.filename = filename
+        self.seqno = random.randint(0, 2**16-1)
         pass
 
     def run(self) -> None:
@@ -62,9 +65,21 @@ class Receiver:
             try:
                 incoming_message, sender_address = self.receiver_socket.recvfrom(BUFFERSIZE)
                 # randomly drop the packet
-                if random.randint(1, 100) > 50: # 90% chance
+                # if random.randint(1, 100) > 50: # 90% chance
+                #     continue
+
+
+                seqno = incoming_message[2:4]
+                header_type = int.from_bytes(incoming_message[0:2], byteorder='big')
+
+                # check the type of header
+                if header_type == HeaderType.SYN.value:
+                    reply_message = "ACK" # need to give an id
+                    self.receiver_socket.sendto(reply_message.encode("utf-8"), sender_address)
                     continue
-                logging.debug(f"client{sender_address} received a message: length ={len(incoming_message.decode('utf-8'))}")
+
+                logging.debug(f"client{sender_address} received a message: length ={int.from_bytes(seqno, byteorder='big')}")
+                logging.debug(incoming_message)
             except ConnectionResetError:
                 continue
 
@@ -73,7 +88,7 @@ class Receiver:
                 file.write(incoming_message.decode('utf-8'))
 
             # reply "ACK" once receive any message from sender
-            reply_message = "ACK"
+            reply_message = "ACK" # need to give an id
             self.receiver_socket.sendto(reply_message.encode("utf-8"),
                                         sender_address)
 
