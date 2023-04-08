@@ -51,7 +51,6 @@ class Sender:
         self.filename = filename
         self.max_win = int(max_win)
         self.rot = int(rot)
-        print(filename)
 
     def ptp_open(self):
         # todo add/modify codes here
@@ -62,21 +61,24 @@ class Sender:
 
     def read_file(self):
         with open(self.filename, mode='r') as file:
+            i = 0
             while True:
                 content = file.read(1000)
                 if content:
-                    print("new line: ", content)
-                    print(type(content))
+                    self.sender_socket.sendto(content.encode('utf-8'), self.receiver_address)
                 else:
+                    logging.debug(f'All {i} packets have been sent')
                     break
+                i += 1
 
     def ptp_send(self):
         self.read_file()
 
     def ptp_close(self):
         # todo add codes here
+        time.sleep(3)
         self._is_active = False  # close the sub-thread
-        pass
+        # self.sender_socket.close()
 
     def listen(self):
         '''(Multithread is used)listen the response from receiver'''

@@ -51,12 +51,25 @@ class Receiver:
         '''
         This function contain the main logic of the receiver
         '''
-        while True:
-            # try to receive any incoming message from the sender
-            incoming_message, sender_address = self.receiver_socket.recvfrom(BUFFERSIZE)
-            logging.debug(f"client{sender_address} send a message: {incoming_message.decode('utf-8')}")
+        # reset the file
+        with open(self.filename, 'w') as file:
+                # Write the string to the file
+                file.write('')
 
-            with open(self.filename, 'w') as file:
+        while True:
+
+            # try to receive any incoming message from the sender
+            try:
+                incoming_message, sender_address = self.receiver_socket.recvfrom(BUFFERSIZE)
+                logging.debug(f"client{sender_address} send a message: length ={len(incoming_message.decode('utf-8'))}")
+            except ConnectionResetError:
+                continue
+
+            # randomly drop the packet
+            if random.randint(1, 100) > 10: # 90% chance
+                continue
+
+            with open(self.filename, 'a') as file:
                 # Write the string to the file
                 file.write(incoming_message.decode('utf-8'))
 
