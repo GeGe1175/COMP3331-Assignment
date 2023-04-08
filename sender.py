@@ -41,7 +41,7 @@ class Sender:
         self.sender_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sender_socket.bind(self.sender_address)
 
-        #  (Optional) start the listening sub-thread first
+        # start the listening sub-thread first
         self._is_active = True  # for the multi-threading
         listen_thread = Thread(target=self.listen)
         # starts the listening thread
@@ -76,9 +76,9 @@ class Sender:
 
     def ptp_close(self):
         # todo add codes here
-        time.sleep(10)
+        time.sleep(3)
         self._is_active = False  # close the sub-thread
-        # self.sender_socket.close()
+       # self.sender_socket.close()
 
     def listen(self):
         '''(Multithread is used)listen the response from receiver'''
