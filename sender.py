@@ -76,7 +76,7 @@ class Sender:
 
     def ptp_close(self):
         # todo add codes here
-        time.sleep(3)
+        time.sleep(10)
         self._is_active = False  # close the sub-thread
         # self.sender_socket.close()
 

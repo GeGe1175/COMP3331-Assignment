@@ -61,12 +61,11 @@ class Receiver:
             # try to receive any incoming message from the sender
             try:
                 incoming_message, sender_address = self.receiver_socket.recvfrom(BUFFERSIZE)
-                logging.debug(f"client{sender_address} send a message: length ={len(incoming_message.decode('utf-8'))}")
+                # randomly drop the packet
+                if random.randint(1, 100) > 50: # 90% chance
+                    continue
+                logging.debug(f"client{sender_address} received a message: length ={len(incoming_message.decode('utf-8'))}")
             except ConnectionResetError:
-                continue
-
-            # randomly drop the packet
-            if random.randint(1, 100) > 10: # 90% chance
                 continue
 
             with open(self.filename, 'a') as file:
