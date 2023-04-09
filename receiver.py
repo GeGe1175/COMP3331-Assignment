@@ -69,29 +69,39 @@ class Receiver:
                 #     continue
 
 
-                seqno = incoming_message[2:4]
+                seqno = int.from_bytes(incoming_message[2:4], byteorder='big')
                 header_type = int.from_bytes(incoming_message[0:2], byteorder='big')
 
                 # check the type of header
                 if header_type == HeaderType.SYN.value:
-                    self.seqno = seqno
-                    reply_message = "ACK" # need to give an id
-                    self.receiver_socket.sendto(reply_message.encode("utf-8"), sender_address)
+                    self.seqno = seqno + 1
+                    ack_header_type = HeaderType.ACK.value
+                    headers = ack_header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
+                    # reply_message = "ACK" # need to give an id
+                    self.receiver_socket.sendto(headers, sender_address)
                     continue
 
-                logging.debug(f"client{sender_address} received a message: length ={int.from_bytes(seqno, byteorder='big')}")
-                logging.debug(incoming_message)
+                elif header_type == HeaderType.DATA.value:
+                    self.seqno = self.seqno + len(incoming_message[4:])
+                    bro = self.seqno.to_bytes(2, 'big')
+                    print(int.from_bytes(bro, byteorder='big'))
+                    ack_header_type = HeaderType.ACK.value
+                    headers = ack_header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
+                    self.receiver_socket.sendto(headers, sender_address)
+
+                    # Write the string to the file
+                    with open(self.filename, 'a') as file:
+                        file.write(incoming_message[4:].decode('utf-8'))
+
+                    # logging.debug(incoming_message)
+
             except ConnectionResetError:
                 continue
 
-            with open(self.filename, 'a') as file:
-                # Write the string to the file
-                file.write(incoming_message.decode('utf-8'))
-
             # reply "ACK" once receive any message from sender
-            reply_message = "ACK" # need to give an id
-            self.receiver_socket.sendto(reply_message.encode("utf-8"),
-                                        sender_address)
+            # reply_message = "ACK" # need to give an id
+            # self.receiver_socket.sendto(reply_message.encode("utf-8"),
+            #                             sender_address)
 
 
 if __name__ == '__main__':

@@ -54,17 +54,48 @@ class Sender:
         self.filename = filename
         self.max_win = int(max_win)
         self.rot = int(rot)
-        self.seqno = random.randint(0, 2**16-1)
+        self.seqno = 0
+        # random.randint(0, 2**16-1)
+        self.synced = True
 
     # setup the connection between the sender and receiver
     def ptp_open(self):
-        # create inital sequence number
         header_type = HeaderType.SYN.value
         headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
         self.sender_socket.sendto(headers, self.receiver_address)
+        self.seqno += 1
 
     def ptp_send(self):
-        self.read_file()
+        # process text and split them into packets
+        with open(self.filename, mode='r') as file:
+            packets = []
+            i = 0
+            while True:
+                content = file.read(1000).encode('utf-8')
+                if content:
+                    header_type = HeaderType.DATA.value
+                    headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
+                    packet = headers + content
+                    packets.append(packet)
+                    # self.sender_socket.sendto(packet, self.receiver_address)
+
+                    # self.seqno += len(content)
+
+                    # logging.debug(f"Packet {i}: {len(packet)} bytes")
+                    i += 1
+                else:
+                    logging.debug(f'All {i} packets have been processed')
+                    break
+
+        # print(packets)
+        # send the packets
+        i = 0
+        while i < len(packets):
+            if self.synced:
+                self.sender_socket.sendto(packets[i], self.receiver_address)
+                self.synced = False
+                self.seqno += len(packets[i][4:])
+                i += 1
 
     def ptp_close(self):
         # todo add codes here
@@ -72,30 +103,20 @@ class Sender:
         self._is_active = False  # close the sub-thread
         # self.listen_thread.stop()
 
-    def read_file(self):
-        with open(self.filename, mode='r') as file:
-            i = 0
-            while True:
-                content = file.read(1000).encode('utf-8')
-                if content:
-                    header_type = HeaderType.DATA.value
-                    seqno = 10000
-                    headers = header_type.to_bytes(2, 'big') + seqno.to_bytes(2, 'big')
-                    packet = headers + content
-                    self.sender_socket.sendto(packet, self.receiver_address)
-                    i += 1
-                    logging.debug(f"Packet {i}: {len(packet)} bytes")
-                else:
-                    logging.debug(f'All {i} packets have been sent')
-                    break
-
     def listen(self):
         '''(Multithread is used)listen the response from receiver'''
         logging.debug("Sub-thread for listening is running")
         while self._is_active:
             # todo add socket
             incoming_message, _ = self.sender_socket.recvfrom(BUFFERSIZE)
-            logging.info(f"received reply from receiver:, {incoming_message.decode('utf-8')}")
+            header_type = int.from_bytes(incoming_message[0:2], byteorder='big')
+            seqno = int.from_bytes(incoming_message[2:4], byteorder='big')
+            if header_type == HeaderType.ACK.value:
+                logging.info("ACK expected is " + str(self.seqno) + " | ACK received was " + str(seqno))
+                if self.seqno == seqno:
+                    self.synced = True
+
+            # logging.info(f"received reply from receiver:, {incoming_message.decode('utf-8')}")
 
     def run(self):
         '''
