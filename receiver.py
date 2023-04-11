@@ -65,8 +65,8 @@ class Receiver:
             try:
                 incoming_message, sender_address = self.receiver_socket.recvfrom(BUFFERSIZE)
                 # randomly drop the packet
-                # if random.randint(1, 100) > 50: # 90% chance
-                #     continue
+                if random.randint(1, 100) > 40: # 90% chance
+                    continue
 
 
                 seqno = int.from_bytes(incoming_message[2:4], byteorder='big')
@@ -83,8 +83,7 @@ class Receiver:
 
                 elif header_type == HeaderType.DATA.value:
                     self.seqno = self.seqno + len(incoming_message[4:])
-                    bro = self.seqno.to_bytes(2, 'big')
-                    print(int.from_bytes(bro, byteorder='big'))
+                    # print(int.from_bytes(self.seqno.to_bytes(2, 'big'), byteorder='big'))
                     ack_header_type = HeaderType.ACK.value
                     headers = ack_header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
                     self.receiver_socket.sendto(headers, sender_address)

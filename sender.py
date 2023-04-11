@@ -50,71 +50,100 @@ class Sender:
         # starts the listening thread
         self.listen_thread.start()
 
-        # todo add codes here
+        self.packets = []
+
         self.filename = filename
         self.max_win = int(max_win)
         self.rot = int(rot)
         self.seqno = 0
+        ################################################################
         # random.randint(0, 2**16-1)
-        self.synced = True
+        ################################################################
+        self.synced = False
+        # stop and wait
+        self.timer_thread = Thread(target=self.timer_listen)
+
+        self.i = 0
+
+        self.state = 'CLOSED'
+
+    def timer_listen(self):
+        print('timer thread starting')
+        while self._is_active:
+            time.sleep(self.rot / 1000)
+            if self.synced == False:
+                if self.state == 'SYN_SENT':
+                    header_type = HeaderType.SYN.value
+                    headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
+                    self.sender_socket.sendto(headers, self.receiver_address)
+                else:
+                    if self.i < len(self.packets):
+                        self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
+                print('resending')
 
     # setup the connection between the sender and receiver
     def ptp_open(self):
         header_type = HeaderType.SYN.value
         headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
+        self.state = 'SYN_SENT'
         self.sender_socket.sendto(headers, self.receiver_address)
-        self.seqno += 1
+        self.timer_thread.start()
 
     def ptp_send(self):
         # process text and split them into packets
         with open(self.filename, mode='r') as file:
-            packets = []
-            i = 0
             while True:
                 content = file.read(1000).encode('utf-8')
                 if content:
                     header_type = HeaderType.DATA.value
                     headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
                     packet = headers + content
-                    packets.append(packet)
+                    self.packets.append(packet)
                     # self.sender_socket.sendto(packet, self.receiver_address)
 
                     # self.seqno += len(content)
 
                     # logging.debug(f"Packet {i}: {len(packet)} bytes")
-                    i += 1
+                    self.i += 1
                 else:
-                    logging.debug(f'All {i} packets have been processed')
+                    logging.debug(f'All {self.i} packets have been processed')
                     break
 
-        # print(packets)
         # send the packets
-        i = 0
-        while i < len(packets):
+        self.i = 0
+        while self.i < len(self.packets):
             if self.synced:
-                self.sender_socket.sendto(packets[i], self.receiver_address)
+                self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
                 self.synced = False
-                self.seqno += len(packets[i][4:])
-                i += 1
 
     def ptp_close(self):
         # todo add codes here
         time.sleep(3)
         self._is_active = False  # close the sub-thread
-        # self.listen_thread.stop()
 
     def listen(self):
         '''(Multithread is used)listen the response from receiver'''
         logging.debug("Sub-thread for listening is running")
         while self._is_active:
-            # todo add socket
+            # decode packet
             incoming_message, _ = self.sender_socket.recvfrom(BUFFERSIZE)
             header_type = int.from_bytes(incoming_message[0:2], byteorder='big')
             seqno = int.from_bytes(incoming_message[2:4], byteorder='big')
+
             if header_type == HeaderType.ACK.value:
-                logging.info("ACK expected is " + str(self.seqno) + " | ACK received was " + str(seqno))
-                if self.seqno == seqno:
-                    self.synced = True
+                if self.state == 'SYN_SENT':
+                    logging.info("ACK expected is " + str(self.seqno + 1) + " | ACK received was " + str(seqno))
+                    if (self.seqno + 1) == seqno:
+                        self.seqno += 1
+                        self.synced = True
+                        self.state = 'ESTABLISHED'
+                elif self.state == 'ESTABLISHED':
+                    logging.info("ACK expected is " + str(self.seqno + len(self.packets[self.i][4:])) + " | ACK received was " + str(seqno))
+                    if (self.seqno + len(self.packets[self.i][4:])):
+                        self.seqno += len(self.packets[self.i][4:])
+                        if self.i == len(self.packets) - 1:
+                            self._is_active = False
+                        self.i += 1
 
             # logging.info(f"received reply from receiver:, {incoming_message.decode('utf-8')}")
 
