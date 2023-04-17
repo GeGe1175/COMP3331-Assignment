@@ -20,27 +20,33 @@ from threading import Thread  # (Optional)threading will make the timer easily i
 import random
 
 from type_enums import HeaderType
+from state_enums import State
 
 BUFFERSIZE = 1024
 
 # max_win is the maximum window size in byte for the sender window. Greater or equal to 1000 and a multiple of 1000.
 class Sender:
-    def __init__(self, sender_port: int, receiver_port: int, filename: str, max_win : int, rot: int) -> None:
+    def __init__(self, sender_port: int, receiver_port: int, filename: str, max_win : int, rto: int) -> None:
         '''
         The Sender will be able to connect the Receiver via UDP
         :param sender_port: the UDP port number to be used by the sender to send PTP segments to the receiver
         :param receiver_port: the UDP port number on which receiver is expecting to receive PTP segments from the sender
         :param filename: the name of the text file that must be transferred from sender to receiver using your reliable transport protocol.
         :param max_win: the maximum window size in bytes for the sender window.
-        :param rot: the value of the retransmission timer in milliseconds. This should be an unsigned integer.
+        :param rto: the value of the retransmission timer in milliseconds. This should be an unsigned integer.
         '''
         self.sender_port = int(sender_port)
         self.receiver_port = int(receiver_port)
+        self.filename = filename
+        self.max_win = int(max_win)
+        self.rto = int(rto)
+
+        # setup ip
         self.sender_address = ("127.0.0.1", self.sender_port)
         self.receiver_address = ("127.0.0.1", self.receiver_port)
 
         # init the UDP socket
-        logging.debug(f"The sender is using the address {self.sender_address}")
+        print(f"The sender is using the address {self.sender_address}")
         self.sender_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sender_socket.bind(self.sender_address)
 
@@ -52,9 +58,6 @@ class Sender:
 
         self.packets = []
 
-        self.filename = filename
-        self.max_win = int(max_win)
-        self.rot = int(rot)
         self.seqno = 0
         ################################################################
         # random.randint(0, 2**16-1)
@@ -65,109 +68,186 @@ class Sender:
 
         self.i = 0
 
-        self.state = 'CLOSED'
+        self.state = State.CLOSED
 
+        # when the timer starts counting
+        self.start_time = None
+        # the current time that the oldest packet got sent
+        self.curr_packet_time = None
+
+        self.db = {}
+
+    # for retransmitting packets
     def timer_listen(self):
         print('timer thread starting')
         while self._is_active:
-            time.sleep(self.rot / 1000)
+            while((time.time() - self.curr_packet_time) < (self.rto / 1000)):
+                continue
             if self.synced == False:
-                if self.state == 'SYN_SENT':
-                    header_type = HeaderType.SYN.value
-                    headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
-                    self.sender_socket.sendto(headers, self.receiver_address)
-                else:
+                if self.state == State.SYN_SENT:
+                    # send RESET segment after 3 failed retransmissions
+                    if self.db['syn'] == 4:
+                        header_type = HeaderType.RESET.value
+                        self.seqno = 0
+                        headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
+                        self.sender_socket.sendto(headers, self.receiver_address)
+                        self.state = State.CLOSED
+                        self._is_active = False
+                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tRESET\t{0}\t{0}')
+                    else:
+                        header_type = HeaderType.SYN.value
+                        headers = header_type.to_bytes(2, 'big') + (self.seqno-1).to_bytes(2, 'big')
+                        self.sender_socket.sendto(headers, self.receiver_address)
+                        self.db['syn'] += 1
+                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tSYN\t{self.seqno-1}\t{0}')
+
+                elif self.state == State.ESTABLISHED:
                     if self.i < len(self.packets):
                         self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
-                print('resending')
+                        content_size = int.from_bytes(self.packets[self.i][2:4], byteorder='big')
+                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tDATA\t{content_size}\t{len(self.packets[self.i][4:])}')
+
+                elif self.state == State.FIN_WAIT:
+                    # send RESET segment after 3 failed retransmissions
+                    if self.db['fin'] == 4:
+                        header_type = HeaderType.RESET.value
+                        self.seqno = 0
+                        headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
+                        self.sender_socket.sendto(headers, self.receiver_address)
+                        self.state = State.CLOSED
+                        self._is_active = False
+                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tRESET\t{0}\t{0}')
+                    else:
+                        header_type = HeaderType.FIN.value
+                        headers = header_type.to_bytes(2, 'big') + (self.seqno-1).to_bytes(2, 'big')
+                        self.sender_socket.sendto(headers, self.receiver_address)
+                        self.db['fin'] += 1
+                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tFIN\t{(self.seqno-1)}\t{0}')
+                self.curr_packet_time = time.time()
 
     # setup the connection between the sender and receiver
     def ptp_open(self):
+        # setup the syn packet
         header_type = HeaderType.SYN.value
         headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
-        self.state = 'SYN_SENT'
+        self.state = State.SYN_SENT
+
         self.sender_socket.sendto(headers, self.receiver_address)
+        # add the syn to the db so it knows how many syns have been sent so far.
+        self.db['syn'] = 1
+        # this time is to find all the packet times from the intial start time
+        self.start_time = time.time()
+        # timer starts from when the syn is send
+        self.curr_packet_time = self.start_time
+        logging.info(f'snd\t{0}\tSYN\t{self.seqno}\t{0}')
+        self.seqno += 1
+
+        # start timing the syn packet and other packets
         self.timer_thread.start()
 
     def ptp_send(self):
+        while self.state != State.ESTABLISHED:
+            if self.state == State.CLOSED:
+                return
+            continue
         # process text and split them into packets
+        seqno = self.seqno
         with open(self.filename, mode='r') as file:
             while True:
                 content = file.read(1000).encode('utf-8')
                 if content:
                     header_type = HeaderType.DATA.value
-                    headers = header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
+                    headers = header_type.to_bytes(2, 'big') + seqno.to_bytes(2, 'big')
                     packet = headers + content
                     self.packets.append(packet)
-                    # self.sender_socket.sendto(packet, self.receiver_address)
-
-                    # self.seqno += len(content)
-
-                    # logging.debug(f"Packet {i}: {len(packet)} bytes")
-                    self.i += 1
+                    seqno += len(content)
                 else:
-                    logging.debug(f'All {self.i} packets have been processed')
                     break
 
         # send the packets
-        self.i = 0
         while self.i < len(self.packets):
             if self.synced:
-                self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
-                self.synced = False
+                if self.i < len(self.packets):
+                    self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
+                    self.synced = False
+                    # track the time of the oldest sent out packet
+                    self.curr_packet_time = time.time()
+                    # print(len(self.packets[self][2:4]))
+                    content_size = int.from_bytes(self.packets[self.i][2:4], byteorder='big')
+                    logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tDATA\t{content_size}\t{len(self.packets[self.i][4:])}')
 
     def ptp_close(self):
-        # todo add codes here
-        time.sleep(3)
-        self._is_active = False  # close the sub-thread
+        # dont send the fin if the RESET segment has been sent
+        if self.state != State.CLOSED:
+            self.state = State.FIN_WAIT
+            logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tFIN\t{self.seqno}\t{0}')
+            header_type = HeaderType.FIN.value
+            headers = header_type.to_bytes(2, 'big') + (self.seqno).to_bytes(2, 'big')
+            self.seqno += 1
+            self.db['fin'] = 1
+            self.sender_socket.sendto(headers, self.receiver_address)
+            self.curr_packet_time = time.time()
+            self.synced = False
+
+        time.sleep(5)
+        self._is_active = False
+        self.sender_socket.close()
 
     def listen(self):
         '''(Multithread is used)listen the response from receiver'''
-        logging.debug("Sub-thread for listening is running")
+        print("Sub-thread for listening is running")
         while self._is_active:
+
+            incoming_message = bytes()
             # decode packet
-            incoming_message, _ = self.sender_socket.recvfrom(BUFFERSIZE)
+            try:
+                incoming_message, _ = self.sender_socket.recvfrom(BUFFERSIZE)
+            # when the socket closes but the socket tries to retrive a packet we can stop the exception
+            except:
+                break
+
             header_type = int.from_bytes(incoming_message[0:2], byteorder='big')
             seqno = int.from_bytes(incoming_message[2:4], byteorder='big')
+            # when the sender is sending a syn, it will wait for the ack to come back
+            if self.state == State.SYN_SENT:
+                if self.seqno == seqno:
+                    self.synced = True
+                    self.state = State.ESTABLISHED
+                    logging.info(f'rcv\t{((time.time()-self.start_time)*1000):.2f}\tACK\t{self.seqno}\t{0}')
 
-            if header_type == HeaderType.ACK.value:
-                if self.state == 'SYN_SENT':
-                    logging.info("ACK expected is " + str(self.seqno + 1) + " | ACK received was " + str(seqno))
-                    if (self.seqno + 1) == seqno:
-                        self.seqno += 1
-                        self.synced = True
-                        self.state = 'ESTABLISHED'
-                elif self.state == 'ESTABLISHED':
-                    logging.info("ACK expected is " + str(self.seqno + len(self.packets[self.i][4:])) + " | ACK received was " + str(seqno))
-                    if (self.seqno + len(self.packets[self.i][4:])):
-                        self.seqno += len(self.packets[self.i][4:])
-                        if self.i == len(self.packets) - 1:
-                            self._is_active = False
+            elif self.state == State.ESTABLISHED and self.i < len(self.packets):
+                print("ACK expected is " + str(self.seqno + len(self.packets[self.i][4:])) + " | ACK received was " + str(seqno))
+                if (self.seqno + len(self.packets[self.i][4:])) == seqno:
+                    self.seqno += len(self.packets[self.i][4:])
+                    logging.info(f'rcv\t{((time.time()-self.start_time)*1000):.2f}\tACK\t{self.seqno}\t{len(self.packets[self.i][4:])}')
+                    if self.i < len(self.packets):
                         self.i += 1
+                    self.synced = True
 
-            # logging.info(f"received reply from receiver:, {incoming_message.decode('utf-8')}")
+            elif self.state == State.FIN_WAIT:
+                if self.seqno == seqno:
+                    logging.info(f'rcv\t{((time.time()-self.start_time)*1000):.2f}\tACK\t{self.seqno}\t{0}')
+                    self.synced = True
+                    self.state = State.CLOSED
+                    # set to false once the ack is received from the fin
+                    self._is_active = False
 
+    # controller
     def run(self):
-        '''
-        This function contain the main logic of the receiver
-        '''
-        # todo add/modify codes here
         self.ptp_open()
         self.ptp_send()
         self.ptp_close()
 
 if __name__ == '__main__':
-    # logging is useful for the log part: https://docs.python.org/3/library/logging.html
     logging.basicConfig(
-        # filename="Sender_log.txt",
-        stream=sys.stderr,
+        filename="Sender_log.txt",
+        format='',
         level=logging.DEBUG,
-        format='%(asctime)s,%(msecs)03d %(levelname)-8s %(message)s',
-        datefmt='%Y-%m-%d:%H:%M:%S')
+        filemode='w')
 
     if len(sys.argv) != 6:
         print(
-            "\n===== Error usage, python3 sender.py sender_port receiver_port FileReceived.txt max_win rot ======\n")
+            "\n===== Error usage, python3 sender.py sender_port receiver_port FileReceived.txt max_win rto ======\n")
         exit(0)
 
     sender = Sender(*sys.argv[1:])
