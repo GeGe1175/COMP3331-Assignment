@@ -1,0 +1,5 @@
+snd	0	SYN	0	0
+snd	106.32	SYN	0	0
+snd	212.71	SYN	0	0
+snd	319.07	SYN	0	0
+snd	425.50	RESET	0	0
