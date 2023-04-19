@@ -70,11 +70,6 @@ class Sender:
 
         self.state = State.CLOSED
 
-        # sliding window
-        self.window_size = int(int(max_win) / 1000)
-        self.window_start = 0
-        self.window_end = self.window_size
-
         # when the timer starts counting
         self.start_time = None
         # the current time that the oldest packet got sent
@@ -178,18 +173,17 @@ class Sender:
                     break
 
         # send the packets
-        while self.i < min(len(self.packets), self.window_end):
+        while self.i < len(self.packets):
             if self.synced:
-                if self.i < min(len(self.packets), self.window_end):
-                    self.curr_packet_time = time.time()
-                    for i in range(self.i, min(len(self.packets), self.window_end)):
-                        self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
-                        content_size = int.from_bytes(self.packets[self.i][2:4], byteorder='big')
-                        logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20DATA\x20\x20\x20\x20{content_size}\x20\x20\x20\x20{len(self.packets[self.i][4:])}')
-                        # track the time of the oldest sent out packet
-                        self.stats['numDataTransferBytes'] += len(self.packets[self.i][4:])
-                        self.stats['numDataSegs'] += 1
+                if self.i < len(self.packets):
+                    self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
+                    content_size = int.from_bytes(self.packets[self.i][2:4], byteorder='big')
+                    logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20DATA\x20\x20\x20\x20{content_size}\x20\x20\x20\x20{len(self.packets[self.i][4:])}')
                     self.synced = False
+                    # track the time of the oldest sent out packet
+                    self.curr_packet_time = time.time()
+                    self.stats['numDataTransferBytes'] += len(self.packets[self.i][4:])
+                    self.stats['numDataSegs'] += 1
         self.state = State.CLOSING
 
     def ptp_close(self):
