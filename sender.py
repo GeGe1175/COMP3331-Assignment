@@ -70,12 +70,24 @@ class Sender:
 
         self.state = State.CLOSED
 
+        # sliding window
+        self.window_size = int(int(max_win) / 1000)
+        self.window_start = 0
+        self.window_end = self.window_size
+
         # when the timer starts counting
         self.start_time = None
         # the current time that the oldest packet got sent
         self.curr_packet_time = None
 
         self.db = {}
+        self.acks = {}
+        self.stats = {
+            'numDataTransferBytes': 0,
+            'numDataSegs': 0,
+            'numDataRetransSegs': 0,
+            'numDupACKS': 0
+        }
 
     # for retransmitting packets
     def timer_listen(self):
@@ -93,19 +105,20 @@ class Sender:
                         self.sender_socket.sendto(headers, self.receiver_address)
                         self.state = State.CLOSED
                         self._is_active = False
-                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tRESET\t{0}\t{0}')
+                        logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20RESET\x20\x20\x20\x20{0}\x20\x20\x20\x20{0}')
                     else:
                         header_type = HeaderType.SYN.value
                         headers = header_type.to_bytes(2, 'big') + (self.seqno-1).to_bytes(2, 'big')
                         self.sender_socket.sendto(headers, self.receiver_address)
                         self.db['syn'] += 1
-                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tSYN\t{self.seqno-1}\t{0}')
+                        logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20SYN\x20\x20\x20\x20{self.seqno-1}\x20\x20\x20\x20{0}')
 
-                elif self.state == State.ESTABLISHED:
+                elif self.state == State.ESTABLISHED or self.state == State.CLOSING:
                     if self.i < len(self.packets):
                         self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
                         content_size = int.from_bytes(self.packets[self.i][2:4], byteorder='big')
-                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tDATA\t{content_size}\t{len(self.packets[self.i][4:])}')
+                        logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20DATA\x20\x20\x20\x20{content_size}\x20\x20\x20\x20{len(self.packets[self.i][4:])}')
+                        self.stats['numDataRetransSegs'] += 1
 
                 elif self.state == State.FIN_WAIT:
                     # send RESET segment after 3 failed retransmissions
@@ -116,13 +129,13 @@ class Sender:
                         self.sender_socket.sendto(headers, self.receiver_address)
                         self.state = State.CLOSED
                         self._is_active = False
-                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tRESET\t{0}\t{0}')
+                        logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20RESET\x20\x20\x20\x20{0}\x20\x20\x20\x20{0}')
                     else:
                         header_type = HeaderType.FIN.value
                         headers = header_type.to_bytes(2, 'big') + (self.seqno-1).to_bytes(2, 'big')
                         self.sender_socket.sendto(headers, self.receiver_address)
                         self.db['fin'] += 1
-                        logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tFIN\t{(self.seqno-1)}\t{0}')
+                        logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20FIN\x20\x20\x20\x20{(self.seqno-1)}\x20\x20\x20\x20{0}')
                 self.curr_packet_time = time.time()
 
     # setup the connection between the sender and receiver
@@ -133,13 +146,13 @@ class Sender:
         self.state = State.SYN_SENT
 
         self.sender_socket.sendto(headers, self.receiver_address)
-        # add the syn to the db so it knows how many syns have been sent so far.
+        # add the syn to the db so it knows how many syns have been sent so far
         self.db['syn'] = 1
         # this time is to find all the packet times from the intial start time
         self.start_time = time.time()
         # timer starts from when the syn is send
         self.curr_packet_time = self.start_time
-        logging.info(f'snd\t{0}\tSYN\t{self.seqno}\t{0}')
+        logging.info(f'snd\x20\x20\x20\x20{0:.2f}\x20\x20\x20\x20SYN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
         self.seqno += 1
 
         # start timing the syn packet and other packets
@@ -165,22 +178,25 @@ class Sender:
                     break
 
         # send the packets
-        while self.i < len(self.packets):
+        while self.i < min(len(self.packets), self.window_end):
             if self.synced:
-                if self.i < len(self.packets):
-                    self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
-                    self.synced = False
-                    # track the time of the oldest sent out packet
+                if self.i < min(len(self.packets), self.window_end):
                     self.curr_packet_time = time.time()
-                    # print(len(self.packets[self][2:4]))
-                    content_size = int.from_bytes(self.packets[self.i][2:4], byteorder='big')
-                    logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tDATA\t{content_size}\t{len(self.packets[self.i][4:])}')
+                    for i in range(self.i, min(len(self.packets), self.window_end)):
+                        self.sender_socket.sendto(self.packets[self.i], self.receiver_address)
+                        content_size = int.from_bytes(self.packets[self.i][2:4], byteorder='big')
+                        logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20DATA\x20\x20\x20\x20{content_size}\x20\x20\x20\x20{len(self.packets[self.i][4:])}')
+                        # track the time of the oldest sent out packet
+                        self.stats['numDataTransferBytes'] += len(self.packets[self.i][4:])
+                        self.stats['numDataSegs'] += 1
+                    self.synced = False
+        self.state = State.CLOSING
 
     def ptp_close(self):
         # dont send the fin if the RESET segment has been sent
         if self.state != State.CLOSED:
             self.state = State.FIN_WAIT
-            logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tFIN\t{self.seqno}\t{0}')
+            logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20FIN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
             header_type = HeaderType.FIN.value
             headers = header_type.to_bytes(2, 'big') + (self.seqno).to_bytes(2, 'big')
             self.seqno += 1
@@ -192,6 +208,10 @@ class Sender:
         time.sleep(5)
         self._is_active = False
         self.sender_socket.close()
+        logging.info(f"Amount of original data transferred in bytes excluding retransmissions: {self.stats['numDataTransferBytes']}")
+        logging.info(f"Number of data segments sent excluding retransmissions: {self.stats['numDataSegs']}")
+        logging.info(f"Number of retransmitted data segments: {self.stats['numDataRetransSegs']}")
+        logging.info(f"Number of duplicate acknowledgements received: {self.stats['numDupACKS']}")
 
     def listen(self):
         '''(Multithread is used)listen the response from receiver'''
@@ -202,31 +222,36 @@ class Sender:
             # decode packet
             try:
                 incoming_message, _ = self.sender_socket.recvfrom(BUFFERSIZE)
-            # when the socket closes but the socket tries to retrive a packet we can stop the exception
+            # when the socket closes but the socket tries to retrieve a packet we can stop the exception
             except:
                 break
 
             header_type = int.from_bytes(incoming_message[0:2], byteorder='big')
             seqno = int.from_bytes(incoming_message[2:4], byteorder='big')
+
+            if self.acks.get(seqno, 0) != 0:
+                self.stats['numDupACKS'] += 1
+            self.acks[seqno] = self.acks.get(seqno, 0) + 1
+
             # when the sender is sending a syn, it will wait for the ack to come back
             if self.state == State.SYN_SENT:
                 if self.seqno == seqno:
                     self.synced = True
                     self.state = State.ESTABLISHED
-                    logging.info(f'rcv\t{((time.time()-self.start_time)*1000):.2f}\tACK\t{self.seqno}\t{0}')
+                    logging.info(f'rcv\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20ACK\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
 
-            elif self.state == State.ESTABLISHED and self.i < len(self.packets):
+            elif (self.state == State.ESTABLISHED or self.state == State.CLOSING) and self.i < len(self.packets):
                 print("ACK expected is " + str(self.seqno + len(self.packets[self.i][4:])) + " | ACK received was " + str(seqno))
                 if (self.seqno + len(self.packets[self.i][4:])) == seqno:
                     self.seqno += len(self.packets[self.i][4:])
-                    logging.info(f'rcv\t{((time.time()-self.start_time)*1000):.2f}\tACK\t{self.seqno}\t{len(self.packets[self.i][4:])}')
+                    logging.info(f'rcv\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20ACK\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{len(self.packets[self.i][4:])}')
                     if self.i < len(self.packets):
                         self.i += 1
                     self.synced = True
 
             elif self.state == State.FIN_WAIT:
                 if self.seqno == seqno:
-                    logging.info(f'rcv\t{((time.time()-self.start_time)*1000):.2f}\tACK\t{self.seqno}\t{0}')
+                    logging.info(f'rcv\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20ACK\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
                     self.synced = True
                     self.state = State.CLOSED
                     # set to false once the ack is received from the fin

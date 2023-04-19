@@ -39,8 +39,8 @@ class Receiver:
         self.receiver_port = int(receiver_port)
         self.sender_port = int(sender_port)
         self.filename = filename
-        self.flp = flp
-        self.rlp = rlp
+        self.flp = float(flp)
+        self.rlp = float(rlp)
 
         self.address = "127.0.0.1"
         self.server_address = (self.address, self.receiver_port)
@@ -64,6 +64,17 @@ class Receiver:
         # listener when receiver is in TIME_WAIT state
         self._is_active = True  # for the multi-threading
         self.listen_thread = Thread(target=self.listen)
+
+        self.db = {}
+        self.stats = {
+            'numDataReceivedBytes': 0,
+            'numDataSegs': 0,
+            'numDupSegs': 0,
+            'numDataSegsDrp': 0,
+            'numACKSegsDrp' : 0
+        }
+
+        self.buffer = []
 
 # remove this shit soon
         random.seed(8)
@@ -101,52 +112,70 @@ class Receiver:
                     self.end = True
                     break
 
-                # randomly drop the packet, meaning that the packet did not reach the receiver
-                if random.randint(1, 100) > 10:
+                # probability that the packet gets lost to the receiver
+                if random.randint(1, 100) <= int(self.flp * 100):
                     if header_type == HeaderType.DATA.value:
-                        logging.info(f'drp\t{((time.time()-self.start_time)*1000):.2f}\tDATA\t{self.seqno}\t{len(incoming_message[4:])}')
+                        logging.info(f'drp\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20DATA\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{len(incoming_message[4:])}')
                     elif header_type == HeaderType.SYN.value:
-                        logging.info(f'drp\tuninitalised\tSYN\t{self.seqno}\t{0}')
+                        logging.info(f'drp\x20\x20\x20\x20uninitalised\x20\x20\x20\x20SYN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
                     elif header_type == HeaderType.FIN.value:
-                        logging.info(f'drp\t{((time.time()-self.start_time)*1000):.2f}\tFIN\t{self.seqno}\t{0}')
+                        logging.info(f'drp\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20FIN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
+                    self.stats['numDataSegsDrp'] += 1
                     continue
 
                 # check the type of header
                 if header_type == HeaderType.SYN.value:
                     self.state = State.ESTABLISHED
-                    logging.info(f'rcv\t{0}\tSYN\t{seqno}\t{0}')
+                    logging.info(f'rcv\x20\x20\x20\x20{0:.2f}\x20\x20\x20\x20SYN\x20\x20\x20\x20{seqno}\x20\x20\x20\x20{0}')
                     self.start_time = time.time()
                     self.seqno = seqno + 1
                     ack_header_type = HeaderType.ACK.value
                     headers = ack_header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
                     self.receiver_socket.sendto(headers, sender_address)
-                    logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tACK\t{self.seqno}\t{0}')
+                    logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20ACK\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
 
                 elif header_type == HeaderType.DATA.value:
-                    logging.info(f'rcv\t{((time.time()-self.start_time)*1000):.2f}\tDATA\t{seqno}\t{len(incoming_message[4:])}')
-                    self.seqno = self.seqno + len(incoming_message[4:])
+                    logging.info(f'rcv\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20DATA\x20\x20\x20\x20{seqno}\x20\x20\x20\x20{len(incoming_message[4:])}')
+                    # randomly drop the packet, meaning the packet did not reach the sender
+                        # # if the packet has already been written in file we can just send an ack
+                        # if seqno not in self.db:
+                        #     self.buffer.append(incoming_message)
+                        #     # Write the string to the file
+                        #     with open(self.filename, 'a') as file:
+                        #         file.write(self.buffer.pop(0)[4:].decode('utf-8'))
+                        #         self.db[seqno] = 1
+                        #         print('buffered')
+                        #     continue
 
-                    # TODO randomly drop the packet, meaning the packet did not reach the sender
-                    if random.randint(1, 100) > 10:
-                        continue
+                    if seqno not in self.db:
+                        # Write the string to the file
+                        with open(self.filename, 'a') as file:
+                            file.write(incoming_message[4:].decode('utf-8'))
+                            self.seqno = self.seqno + len(incoming_message[4:])
+                            self.stats['numDataReceivedBytes'] += len(incoming_message[4:])
+                            self.stats['numDataSegs'] += 1
+
+                    # check if that packet sequence number is already in the data to find if it is a duplicate
+                    if seqno in self.db:
+                        self.stats['numDupSegs'] += 1
 
                     ack_header_type = HeaderType.ACK.value
                     headers = ack_header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
-                    self.receiver_socket.sendto(headers, sender_address)
-                    logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tACK\t{self.seqno}\t{0}')
-
-
-                    # Write the string to the file
-                    with open(self.filename, 'a') as file:
-                        file.write(incoming_message[4:].decode('utf-8'))
+                    logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20ACK\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
+                    self.db[seqno] = self.db.get(seqno, 0) + 1
+                    # probability that the packet gets lost on the way back
+                    if random.randint(1, 100) >= int(self.rlp * 100):
+                        self.receiver_socket.sendto(headers, sender_address)
+                    else:
+                        self.stats['numACKSegsDrp'] += 1
 
                 elif header_type == HeaderType.FIN.value:
-                    logging.info(f'rcv\t{((time.time()-self.start_time)*1000):.2f}\tFIN\t{self.seqno}\t{0}')
+                    logging.info(f'rcv\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20FIN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
                     self.seqno = seqno + 1
                     ack_header_type = HeaderType.ACK.value
                     headers = ack_header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
                     self.receiver_socket.sendto(headers, sender_address)
-                    logging.info(f'snd\t{((time.time()-self.start_time)*1000):.2f}\tACK\t{self.seqno}\t{0}')
+                    logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20ACK\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
 
                     self.state = State.TIME_WAIT
                     self.listen_thread.start()
@@ -154,6 +183,11 @@ class Receiver:
 
             except ConnectionResetError:
                 continue
+        logging.info(f"Amount of original data received in bytes: {self.stats['numDataReceivedBytes']}")
+        logging.info(f"Number of original data segments received: {self.stats['numDataSegs']}")
+        logging.info(f"Number of duplicate data segments received: {self.stats['numDupSegs']}")
+        logging.info(f"Number of data segments dropped: {self.stats['numDataSegsDrp']}")
+        logging.info(f"Number of ACK segments dropped: {self.stats['numACKSegsDrp']}")
 
 if __name__ == '__main__':
     logging.basicConfig(
