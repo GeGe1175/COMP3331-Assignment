@@ -116,11 +116,11 @@ class Receiver:
                 if random.randint(1, 100) <= int(self.flp * 100):
                     if header_type == HeaderType.DATA.value:
                         logging.info(f'drp\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20DATA\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{len(incoming_message[4:])}')
+                        self.stats['numDataSegsDrp'] += 1
                     elif header_type == HeaderType.SYN.value:
                         logging.info(f'drp\x20\x20\x20\x20uninitalised\x20\x20\x20\x20SYN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
                     elif header_type == HeaderType.FIN.value:
                         logging.info(f'drp\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20FIN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
-                    self.stats['numDataSegsDrp'] += 1
                     continue
 
                 # check the type of header

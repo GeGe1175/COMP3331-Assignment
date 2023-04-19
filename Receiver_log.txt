@@ -1,0 +1,33 @@
+rcv    0.00    SYN    0    0
+snd    0.03    ACK    1    0
+rcv    18.74    DATA    1    1000
+snd    19.06    ACK    1001    0
+rcv    131.98    DATA    1    1000
+snd    132.04    ACK    1001    0
+rcv    237.50    DATA    1    1000
+snd    237.55    ACK    1001    0
+rcv    337.59    DATA    1    1000
+snd    337.63    ACK    1001    0
+rcv    437.66    DATA    1    1000
+snd    437.69    ACK    1001    0
+rcv    444.12    DATA    1001    1000
+snd    444.32    ACK    2001    0
+rcv    461.87    DATA    2001    1000
+snd    462.06    ACK    3001    0
+rcv    576.44    DATA    2001    1000
+snd    576.54    ACK    3001    0
+rcv    582.84    DATA    3001    1000
+snd    583.07    ACK    4001    0
+rcv    605.86    DATA    4001    1000
+snd    606.12    ACK    5001    0
+rcv    617.39    DATA    5001    1000
+snd    617.61    ACK    6001    0
+rcv    630.14    DATA    6001    700
+snd    630.34    ACK    6701    0
+rcv    660.51    FIN    6701    0
+snd    660.58    ACK    6702    0
+Amount of original data received in bytes: 6700
+Number of original data segments received: 7
+Number of duplicate data segments received: 5
+Number of data segments dropped: 0
+Number of ACK segments dropped: 5
