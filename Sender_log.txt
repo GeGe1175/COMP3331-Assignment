@@ -1,21 +1,21 @@
-snd    0.00    SYN    36180    0
-rcv    11.66    ACK    36181    0
-snd    48.05    DATA    36181    1000
-rcv    54.35    ACK    37181    1000
-snd    85.84    DATA    37181    1000
-rcv    98.28    ACK    38181    1000
-snd    115.83    DATA    38181    1000
-rcv    140.69    ACK    39181    1000
-snd    158.51    DATA    39181    1000
-rcv    171.23    ACK    40181    1000
-snd    212.78    DATA    40181    1000
-rcv    237.75    ACK    41181    1000
-snd    244.11    DATA    41181    1000
-rcv    285.24    ACK    42181    1000
-snd    285.40    DATA    42181    700
-rcv    344.20    ACK    42881    700
-snd    345.87    FIN    42881    0
-rcv    362.91    ACK    42882    0
+snd    0.00    SYN    8252    0
+rcv    5.96    ACK    8253    0
+snd    32.21    DATA    8253    1000
+rcv    38.41    ACK    9253    1000
+snd    62.52    DATA    9253    1000
+rcv    81.05    ACK    10253    1000
+snd    93.75    DATA    10253    1000
+rcv    112.11    ACK    11253    1000
+snd    112.23    DATA    11253    1000
+rcv    131.19    ACK    12253    1000
+snd    160.77    DATA    12253    1000
+rcv    173.44    ACK    13253    1000
+snd    186.10    DATA    13253    1000
+rcv    191.98    ACK    14253    1000
+snd    197.90    DATA    14253    700
+rcv    210.05    ACK    14953    700
+snd    222.81    FIN    14953    0
+rcv    235.56    ACK    14954    0
 Amount of original data transferred in bytes excluding retransmissions: 6700
 Number of data segments sent excluding retransmissions: 7
 Number of retransmitted data segments: 0

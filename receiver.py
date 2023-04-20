@@ -122,7 +122,7 @@ class Receiver:
                     self.state = State.ESTABLISHED
                     logging.info(f'rcv\x20\x20\x20\x20{0:.2f}\x20\x20\x20\x20SYN\x20\x20\x20\x20{seqno}\x20\x20\x20\x20{0}')
                     self.start_time = time.time()
-                    self.seqno = seqno + 1
+                    self.seqno = (seqno + 1) % (2**16)
                     ack_header_type = HeaderType.ACK.value
                     headers = ack_header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
                     self.receiver_socket.sendto(headers, sender_address)
@@ -134,7 +134,7 @@ class Receiver:
                         # Write the string to the file
                         with open(self.filename, 'a') as file:
                             file.write(incoming_message[4:].decode('utf-8'))
-                            self.seqno = self.seqno + len(incoming_message[4:])
+                            self.seqno = (self.seqno + len(incoming_message[4:])) % (2**16)
                             self.stats['numDataReceivedBytes'] += len(incoming_message[4:])
                             self.stats['numDataSegs'] += 1
 
@@ -154,7 +154,7 @@ class Receiver:
 
                 elif header_type == HeaderType.FIN.value:
                     logging.info(f'rcv\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20FIN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
-                    self.seqno = seqno + 1
+                    self.seqno = (seqno + 1) % (2**16)
                     ack_header_type = HeaderType.ACK.value
                     headers = ack_header_type.to_bytes(2, 'big') + self.seqno.to_bytes(2, 'big')
                     self.receiver_socket.sendto(headers, sender_address)

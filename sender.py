@@ -58,7 +58,7 @@ class Sender:
 
         self.packets = []
 
-        self.seqno = random.randint(0, 2**16-1)
+        self.seqno = random.randint(0, 2**16)
         self.synced = False
         # stop and wait
         self.timer_thread = Thread(target=self.timer_listen)
@@ -147,7 +147,7 @@ class Sender:
         # timer starts from when the syn is send
         self.curr_packet_time = self.start_time
         logging.info(f'snd\x20\x20\x20\x20{0:.2f}\x20\x20\x20\x20SYN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
-        self.seqno += 1
+        self.seqno = (self.seqno + 1) % (2**16)
 
         # start timing the syn packet and other packets
         self.timer_thread.start()
@@ -167,7 +167,7 @@ class Sender:
                     headers = header_type.to_bytes(2, 'big') + seqno.to_bytes(2, 'big')
                     packet = headers + content
                     self.packets.append(packet)
-                    seqno += len(content)
+                    seqno += len(content) % (2**16)
                 else:
                     break
 
@@ -192,7 +192,7 @@ class Sender:
             logging.info(f'snd\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20FIN\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
             header_type = HeaderType.FIN.value
             headers = header_type.to_bytes(2, 'big') + (self.seqno).to_bytes(2, 'big')
-            self.seqno += 1
+            self.seqno = (self.seqno + 1) % (2**16)
             self.db['fin'] = 1
             self.sender_socket.sendto(headers, self.receiver_address)
             self.curr_packet_time = time.time()
@@ -233,9 +233,9 @@ class Sender:
                     logging.info(f'rcv\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20ACK\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{0}')
 
             elif (self.state == State.ESTABLISHED or self.state == State.CLOSING) and self.i < len(self.packets):
-                print("ACK expected is " + str(self.seqno + len(self.packets[self.i][4:])) + " | ACK received was " + str(seqno))
-                if (self.seqno + len(self.packets[self.i][4:])) == seqno:
-                    self.seqno += len(self.packets[self.i][4:])
+                print("ACK expected is " + str((self.seqno + len(self.packets[self.i][4:])) % (2**16)) + " | ACK received was " + str(seqno))
+                if ((self.seqno + len(self.packets[self.i][4:])) % (2**16)) == seqno:
+                    self.seqno = (self.seqno + len(self.packets[self.i][4:])) % (2**16)
                     logging.info(f'rcv\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20ACK\x20\x20\x20\x20{self.seqno}\x20\x20\x20\x20{len(self.packets[self.i][4:])}')
                     if self.i < len(self.packets):
                         self.i += 1
