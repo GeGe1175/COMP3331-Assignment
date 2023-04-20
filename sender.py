@@ -58,10 +58,7 @@ class Sender:
 
         self.packets = []
 
-        self.seqno = 0
-        ################################################################
-        # random.randint(0, 2**16-1)
-        ################################################################
+        self.seqno = random.randint(0, 2**16-1)
         self.synced = False
         # stop and wait
         self.timer_thread = Thread(target=self.timer_listen)
@@ -75,7 +72,9 @@ class Sender:
         # the current time that the oldest packet got sent
         self.curr_packet_time = None
 
+        # for tracking number of retransmissions
         self.db = {}
+        # for tracking duplicate acks
         self.acks = {}
         self.stats = {
             'numDataTransferBytes': 0,
@@ -211,7 +210,6 @@ class Sender:
         '''(Multithread is used)listen the response from receiver'''
         print("Sub-thread for listening is running")
         while self._is_active:
-
             incoming_message = bytes()
             # decode packet
             try:

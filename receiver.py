@@ -74,11 +74,6 @@ class Receiver:
             'numACKSegsDrp' : 0
         }
 
-        self.buffer = []
-
-# remove this shit soon
-        random.seed(8)
-
     def listen(self):
         while self._is_active:
             start_time = time.time()
@@ -136,17 +131,6 @@ class Receiver:
 
                 elif header_type == HeaderType.DATA.value:
                     logging.info(f'rcv\x20\x20\x20\x20{((time.time()-self.start_time)*1000):.2f}\x20\x20\x20\x20DATA\x20\x20\x20\x20{seqno}\x20\x20\x20\x20{len(incoming_message[4:])}')
-                    # randomly drop the packet, meaning the packet did not reach the sender
-                        # # if the packet has already been written in file we can just send an ack
-                        # if seqno not in self.db:
-                        #     self.buffer.append(incoming_message)
-                        #     # Write the string to the file
-                        #     with open(self.filename, 'a') as file:
-                        #         file.write(self.buffer.pop(0)[4:].decode('utf-8'))
-                        #         self.db[seqno] = 1
-                        #         print('buffered')
-                        #     continue
-
                     if seqno not in self.db:
                         # Write the string to the file
                         with open(self.filename, 'a') as file:
