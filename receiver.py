@@ -81,7 +81,6 @@ class Receiver:
                 continue
             self._is_active = False
 
-        print('closed')
         self.state = State.CLOSED
         self.end = True
 

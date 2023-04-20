@@ -1,10 +1,23 @@
-drp    uninitalised    SYN    -1    0
-drp    uninitalised    SYN    -1    0
-drp    uninitalised    SYN    -1    0
-drp    uninitalised    SYN    -1    0
-The connection has been reset
-Amount of original data received in bytes: 0
-Number of original data segments received: 0
+rcv    0.00    SYN    36180    0
+snd    0.02    ACK    36181    0
+rcv    41.54    DATA    36181    1000
+snd    41.80    ACK    37181    0
+rcv    79.40    DATA    37181    1000
+snd    79.63    ACK    38181    0
+rcv    115.69    DATA    38181    1000
+snd    115.91    ACK    39181    0
+rcv    152.74    DATA    39181    1000
+snd    153.00    ACK    40181    0
+rcv    200.28    DATA    40181    1000
+snd    200.62    ACK    41181    0
+rcv    247.89    DATA    41181    1000
+snd    248.18    ACK    42181    0
+rcv    285.36    DATA    42181    700
+snd    285.55    ACK    42881    0
+rcv    352.53    FIN    42881    0
+snd    354.38    ACK    42882    0
+Amount of original data received in bytes: 6700
+Number of original data segments received: 7
 Number of duplicate data segments received: 0
 Number of data segments dropped: 0
 Number of ACK segments dropped: 0
